@@ -6,7 +6,7 @@ const STATUS_COPY = {
   offline: { label: 'RECONNECTING', icon: WifiOff, tone: 'text-signal-red', spin: false },
 }
 
-export default function Header({ connectionStatus, liveCount }) {
+export default function Header({ connectionStatus, liveCount, onLogout }) {
   const status = STATUS_COPY[connectionStatus] ?? STATUS_COPY.connecting
   const StatusIcon = status.icon
 
@@ -24,7 +24,7 @@ export default function Header({ connectionStatus, liveCount }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-3 sm:gap-6">
         <div className="hidden text-right sm:block">
           <p className="text-xs text-slate-500">Alerts this session</p>
           <p className="font-mono text-sm font-semibold text-slate-200">{liveCount}</p>
@@ -33,6 +33,12 @@ export default function Header({ connectionStatus, liveCount }) {
           <StatusIcon size={14} className={status.spin ? 'animate-spin' : ''} />
           <span className="font-mono text-xs font-medium tracking-wider">{status.label}</span>
         </div>
+        <button
+          onClick={onLogout}
+          className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition hover:border-red-400 hover:text-red-300"
+        >
+          Sign out
+        </button>
       </div>
     </header>
   )
