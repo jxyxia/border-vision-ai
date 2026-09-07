@@ -7,7 +7,9 @@ from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 
 # Config
-VIDEO_PATH = "data/test_video.mp4"  # Put your CCTV clip here
+VIDEO_DIR = "data"
+VIDEO_PATH = os.path.join(VIDEO_DIR, "test_video.mp4")
+SELECTED_VIDEO_FILE = os.path.join(VIDEO_DIR, ".selected_video")
 OUTPUT_FILE = "data/tracking_output.jsonl"
 WINDOW_NAME = "CCTV Tracking (Press 'q' to quit)"
 BOUNDARY_Y = 1400  # The Y-coordinate for the restricted border
@@ -18,6 +20,15 @@ BOUNDARY_Y = 1400  # The Y-coordinate for the restricted border
 FRAME_FILE = "data/latest_frame.jpg"
 FRAME_TMP_FILE = "data/.latest_frame.tmp.jpg"
 SHOW_LOCAL_WINDOW = True  # set False to run headless (frontend-only viewing)
+
+def selected_video_path():
+    if os.path.exists(SELECTED_VIDEO_FILE):
+        with open(SELECTED_VIDEO_FILE, 'r') as selected_file:
+            selected_name = selected_file.read().strip()
+        candidate = os.path.join(VIDEO_DIR, selected_name)
+        if os.path.isfile(candidate) and selected_name.lower().endswith('.mp4'):
+            return candidate
+    return VIDEO_PATH
 
 def write_live_frame(frame):
     """Encode + atomically swap in the latest annotated frame.
@@ -37,9 +48,10 @@ def run_tracker():
     model = YOLO("yolov8n.pt")     # Will download weights automatically on first run
     tracker = DeepSort(max_age=30)  # max_age caps how long it remembers a lost ID
     
-    cap = cv2.VideoCapture(VIDEO_PATH)
+    current_video_path = selected_video_path()
+    cap = cv2.VideoCapture(current_video_path)
     if not cap.isOpened():
-        print(f"Error: Could not open {VIDEO_PATH}. Make sure the file exists.")
+        print(f"Error: Could not open {current_video_path}. Make sure the file exists.")
         return
 
     # Clear previous run data
@@ -53,9 +65,20 @@ def run_tracker():
         cv2.resizeWindow(WINDOW_NAME, 960, 540)
     
     while cap.isOpened():
+        next_video_path = selected_video_path()
+        if next_video_path != current_video_path:
+            cap.release()
+            current_video_path = next_video_path
+            cap = cv2.VideoCapture(current_video_path)
+            open(OUTPUT_FILE, 'w').close()
+            tracker = DeepSort(max_age=30)
+            print(f"Switched to {current_video_path}")
+            continue
+
         ret, frame = cap.read()
         if not ret:
-            break
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            continue
             
         # Run YOLO detection - added conf=0.5 to stop false positives (ghost detections)
         results = model(frame, stream=True, verbose=False, conf=0.5)

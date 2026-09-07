@@ -1,7 +1,8 @@
 # backend/main.py
 import os
 import time
-from fastapi import FastAPI, WebSocket
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -58,6 +59,29 @@ async def websocket_endpoint(websocket: WebSocket):
 
 FRAME_FILE = "data/latest_frame.jpg"
 FRAME_INTERVAL_SECONDS = 0.05  # ~20 fps cap on the outgoing stream
+VIDEO_DIR = Path("data")
+SELECTED_VIDEO_FILE = VIDEO_DIR / ".selected_video"
+
+def available_videos():
+    return sorted(
+        path.name for path in VIDEO_DIR.glob("*.mp4") if path.is_file()
+    )
+
+@app.get("/videos")
+def get_videos():
+    videos = available_videos()
+    selected = SELECTED_VIDEO_FILE.read_text().strip() if SELECTED_VIDEO_FILE.exists() else None
+    if selected not in videos:
+        selected = videos[0] if videos else None
+    return {"videos": videos, "selected": selected}
+
+@app.post("/videos/{video_name}")
+def select_video(video_name: str):
+    videos = available_videos()
+    if video_name not in videos:
+        raise HTTPException(status_code=404, detail="Video not found")
+    SELECTED_VIDEO_FILE.write_text(video_name)
+    return {"status": "success", "selected": video_name}
 
 def _mjpeg_generator():
     boundary = b"--frame\r\n"

@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Video, VideoOff, RotateCw, TriangleAlert } from 'lucide-react'
 import { severityOf, formatTime } from '../lib/severity'
-import { VIDEO_FEED_URL } from '../lib/config'
+import { VIDEO_FEED_URL, VIDEOS_URL } from '../lib/config'
 
 const FEED_COPY = {
   connecting: { label: 'CONNECTING…', dotClass: 'bg-signal-amber animate-pulseDot' },
@@ -12,6 +12,33 @@ const FEED_COPY = {
 export default function CameraFeed({ liveAlerts }) {
   const [feedStatus, setFeedStatus] = useState('connecting') // connecting | live | offline
   const [reloadNonce, setReloadNonce] = useState(0)
+  const [videos, setVideos] = useState([])
+  const [selectedVideo, setSelectedVideo] = useState('')
+  const [videoStatus, setVideoStatus] = useState('loading')
+
+  useEffect(() => {
+    fetch(VIDEOS_URL)
+      .then((response) => response.json())
+      .then(({ videos: availableVideos, selected }) => {
+        setVideos(availableVideos)
+        setSelectedVideo(selected || '')
+        setVideoStatus(availableVideos.length ? 'ready' : 'empty')
+      })
+      .catch(() => setVideoStatus('offline'))
+  }, [])
+
+  async function handleVideoChange(event) {
+    const videoName = event.target.value
+    setSelectedVideo(videoName)
+    setFeedStatus('connecting')
+
+    try {
+      await fetch(`${VIDEOS_URL}/${encodeURIComponent(videoName)}`, { method: 'POST' })
+      setReloadNonce((nonce) => nonce + 1)
+    } catch {
+      setFeedStatus('offline')
+    }
+  }
 
   const handleLoad = useCallback(() => setFeedStatus('live'), [])
   const handleError = useCallback(() => setFeedStatus('offline'), [])
@@ -32,9 +59,26 @@ export default function CameraFeed({ liveAlerts }) {
           <Video size={15} />
           <span className="font-mono text-xs tracking-wide">CAM-04 · NORTH PERIMETER (LIVE DETECTION)</span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-3">
+          {videoStatus === 'ready' && (
+            <label className="flex items-center gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Source</span>
+              <select
+                value={selectedVideo}
+                onChange={handleVideoChange}
+                className="max-w-[180px] rounded border border-ops-border bg-ops-panel2 px-2 py-1 font-mono text-[10px] text-slate-300 outline-none focus:border-signal-green/50"
+                aria-label="Select video source"
+              >
+                {videos.map((video) => (
+                  <option key={video} value={video}>{video}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="flex items-center gap-1.5">
           <span className={`h-1.5 w-1.5 rounded-full ${status.dotClass}`} />
           <span className="font-mono text-[11px] text-slate-500">{status.label}</span>
+          </div>
         </div>
       </div>
 
