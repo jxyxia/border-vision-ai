@@ -6,13 +6,15 @@ from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 
 # Config
-VIDEO_PATH = "data/test_video.mp4" # Put your CCTV clip here
+VIDEO_PATH = "data/test_video.mp4"  # Put your CCTV clip here
 OUTPUT_FILE = "data/tracking_output.jsonl"
+WINDOW_NAME = "CCTV Tracking (Press 'q' to quit)"
+BOUNDARY_Y = 1400  # The Y-coordinate for the restricted border
 
 def run_tracker():
     # Initialize YOLO and DeepSORT
-    model = YOLO("yolov8n.pt")  # Will download weights automatically on first run
-    tracker = DeepSort(max_age=30) # max_age caps how long it remembers a lost ID
+    model = YOLO("yolov8n.pt")     # Will download weights automatically on first run
+    tracker = DeepSort(max_age=30)  # max_age caps how long it remembers a lost ID
     
     cap = cv2.VideoCapture(VIDEO_PATH)
     if not cap.isOpened():
@@ -24,13 +26,17 @@ def run_tracker():
 
     print("Starting detection and tracking...")
     
+    # Configure resizable window so it doesn't look zoomed in
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_NAME, 960, 540)
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
             
-        # Run YOLO detection
-        results = model(frame, stream=True, verbose=False)
+        # Run YOLO detection - added conf=0.5 to stop false positives (ghost detections)
+        results = model(frame, stream=True, verbose=False, conf=0.5)
         detections = []
         
         for r in results:
@@ -46,16 +52,16 @@ def run_tracker():
         # Update tracker
         tracks = tracker.update_tracks(detections, frame=frame)
         
-        # Write to JSONL
+        # Write to JSONL & annotate
         with open(OUTPUT_FILE, 'a') as f:
             for track in tracks:
                 if not track.is_confirmed():
                     continue
                 
                 track_id = track.track_id
-                ltrb = track.to_ltrb() # Left, Top, Right, Bottom
-                cx = (ltrb[0] + ltrb[2]) / 2 # Center X
-                cy = (ltrb[1] + ltrb[3]) / 2 # Center Y
+                ltrb = track.to_ltrb()  # Left, Top, Right, Bottom
+                cx = (ltrb[0] + ltrb[2]) / 2  # Center X
+                cy = (ltrb[1] + ltrb[3]) / 2  # Center Y
                 
                 data = {
                     "track_id": str(track_id),
@@ -66,11 +72,11 @@ def run_tracker():
                 }
                 f.write(json.dumps(data) + "\n")
                 
-                # Draw boxes for visual debugging
+                # Draw boxes and IDs for visual debugging
                 cv2.rectangle(frame, (int(ltrb[0]), int(ltrb[1])), (int(ltrb[2]), int(ltrb[3])), (0, 255, 0), 2)
                 cv2.putText(frame, f"ID: {track_id}", (int(ltrb[0]), int(ltrb[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        cv2.imshow("CCTV Tracking (Press 'q' to quit)", frame)
+        cv2.imshow(WINDOW_NAME, frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 

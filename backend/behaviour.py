@@ -2,28 +2,48 @@
 import json
 import time
 import requests
+import os
 from datetime import datetime
 
 # Config
 TRACKING_FILE = "data/tracking_output.jsonl"
 API_URL = "http://localhost:8000/alerts"
-BOUNDARY_Y = 300 # Adjust this based on your camera angle (Y-coordinate line)
+BOUNDARY_Y = 1400 # Match this with detect_track.py
 LOITER_LIMIT = 50 # Number of frames/readings before tagging as loitering
 
 def analyze_behaviour():
     history = {}
     alerted_ids = set()
+    last_pos = 0
     
-    print("Waiting for tracking data...")
+    print("Waiting for live tracking data...")
     
-    # Simple tail -f equivalent in Python
-    with open(TRACKING_FILE, 'r') as f:
-        while True:
+    while True:
+        # 1. Wait until file exists
+        if not os.path.exists(TRACKING_FILE):
+            time.sleep(0.1)
+            continue
+            
+        # 2. If detect_track.py clears the file, reset our reading position
+        current_size = os.path.getsize(TRACKING_FILE)
+        if current_size < last_pos:
+            last_pos = 0
+            history.clear()
+            alerted_ids.clear()
+            print("Detected new video stream. Resetting tracker...")
+
+        # 3. Read the file robustly
+        with open(TRACKING_FILE, 'r') as f:
+            f.seek(last_pos)
             line = f.readline()
+            
             if not line:
-                time.sleep(0.1) # Wait for new data
+                time.sleep(0.1)
                 continue
                 
+            # Update position for the next loop
+            last_pos = f.tell()
+            
             try:
                 data = json.loads(line.strip())
             except:
@@ -65,6 +85,5 @@ def send_alert(track_id, alert_type):
         print(f"Failed to send alert: API might be down. ({e})")
 
 if __name__ == "__main__":
-    # Ensure file exists before reading
     open(TRACKING_FILE, 'a').close()
     analyze_behaviour()
