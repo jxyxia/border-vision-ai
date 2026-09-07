@@ -1,9 +1,10 @@
 # backend/main.py
+import os
+import time
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import asyncio
-from datetime import datetime
 
 app = FastAPI(title="AI Border Surveillance API")
 
@@ -48,3 +49,32 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except Exception:
         connected_clients.remove(websocket)
+
+# --- Live video feed ------------------------------------------------------
+# detect_track.py writes each annotated frame (real bounding boxes already
+# drawn on it) to FRAME_FILE, atomically. This endpoint just re-reads that
+# file in a loop and streams it out as MJPEG (multipart/x-mixed-replace),
+# which a plain <img> tag in the browser can play natively.
+
+FRAME_FILE = "data/latest_frame.jpg"
+FRAME_INTERVAL_SECONDS = 0.05  # ~20 fps cap on the outgoing stream
+
+def _mjpeg_generator():
+    boundary = b"--frame\r\n"
+    while True:
+        if os.path.exists(FRAME_FILE):
+            try:
+                with open(FRAME_FILE, "rb") as f:
+                    frame_bytes = f.read()
+                if frame_bytes:
+                    yield boundary + b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+            except OSError:
+                pass  # detect_track.py mid-write (os.replace) — just skip this tick
+        time.sleep(FRAME_INTERVAL_SECONDS)
+
+@app.get("/video_feed")
+def video_feed():
+    return StreamingResponse(
+        _mjpeg_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )

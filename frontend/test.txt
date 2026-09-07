@@ -1,1 +1,0 @@
-here in this folder all files related frontend will be there.

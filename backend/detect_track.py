@@ -1,6 +1,7 @@
 # backend/detect_track.py
 import cv2
 import json
+import os
 from datetime import datetime
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
@@ -10,6 +11,26 @@ VIDEO_PATH = "data/test_video.mp4"  # Put your CCTV clip here
 OUTPUT_FILE = "data/tracking_output.jsonl"
 WINDOW_NAME = "CCTV Tracking (Press 'q' to quit)"
 BOUNDARY_Y = 1400  # The Y-coordinate for the restricted border
+
+# Live frame hand-off to the FastAPI backend, so the frontend can show the
+# same annotated feed in the browser. main.py's /video_feed endpoint just
+# re-reads this file and streams it out as MJPEG.
+FRAME_FILE = "data/latest_frame.jpg"
+FRAME_TMP_FILE = "data/.latest_frame.tmp.jpg"
+SHOW_LOCAL_WINDOW = True  # set False to run headless (frontend-only viewing)
+
+def write_live_frame(frame):
+    """Encode + atomically swap in the latest annotated frame.
+
+    Writing to a temp file then os.replace()-ing it avoids the frontend
+    (or main.py's stream generator) ever reading a half-written JPEG.
+    """
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    if not ok:
+        return
+    with open(FRAME_TMP_FILE, "wb") as f:
+        f.write(buf.tobytes())
+    os.replace(FRAME_TMP_FILE, FRAME_FILE)
 
 def run_tracker():
     # Initialize YOLO and DeepSORT
@@ -26,9 +47,10 @@ def run_tracker():
 
     print("Starting detection and tracking...")
     
-    # Configure resizable window so it doesn't look zoomed in
-    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW_NAME, 960, 540)
+    if SHOW_LOCAL_WINDOW:
+        # Configure resizable window so it doesn't look zoomed in
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_NAME, 960, 540)
     
     while cap.isOpened():
         ret, frame = cap.read()
@@ -76,12 +98,20 @@ def run_tracker():
                 cv2.rectangle(frame, (int(ltrb[0]), int(ltrb[1])), (int(ltrb[2]), int(ltrb[3])), (0, 255, 0), 2)
                 cv2.putText(frame, f"ID: {track_id}", (int(ltrb[0]), int(ltrb[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        cv2.imshow(WINDOW_NAME, frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # Draw the boundary line too, so the browser feed shows it same as the debug window
+        cv2.line(frame, (0, BOUNDARY_Y), (frame.shape[1], BOUNDARY_Y), (0, 0, 255), 2)
+
+        # Hand the annotated frame off to main.py for /video_feed
+        write_live_frame(frame)
+
+        if SHOW_LOCAL_WINDOW:
+            cv2.imshow(WINDOW_NAME, frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
     cap.release()
-    cv2.destroyAllWindows()
+    if SHOW_LOCAL_WINDOW:
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     run_tracker()
