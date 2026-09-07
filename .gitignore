@@ -1,0 +1,12 @@
+# Virtual Environment
+backend/venv/
+__pycache__/
+
+# Video Data & Outputs
+backend/data/*.mp4
+backend/data/*.avi
+backend/data/*.jsonl
+
+# YOLO Weights
+backend/models/*.pt
+*.pt
