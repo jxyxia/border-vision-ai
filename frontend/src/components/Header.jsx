@@ -20,7 +20,7 @@ export default function Header({ connectionStatus, liveCount }) {
           <h1 className="font-mono text-sm font-semibold tracking-wide text-slate-100">
             BORDER WATCH
           </h1>
-          <p className="text-xs text-slate-500">AI Surveillance Console — Sector 7 Perimeter</p>
+          <p className="text-xs text-slate-500">AI Surveillance Console</p>
         </div>
       </div>
 
